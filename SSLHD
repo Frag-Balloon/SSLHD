@@ -1,0 +1,135 @@
+import numpy as np
+class SSLHD:
+    def __init__(sl, nd, Nn):
+        sl.nd=nd
+        sl.Nn=Nn
+    def LHD(sl, center=True):
+        LH_i=np.empty((sl.Nn, sl.nd), dtype=np.int32)
+        LH=np.empty((sl.Nn, sl.nd))
+        for i in np.arange(sl.nd):
+            LH_i[:, i]=np.random.permutation(sl.Nn)
+        if center:
+            xx=np.linspace(start=0, stop=1, num=sl.Nn, endpoint=False)+1/sl.Nn/2
+            for i in np.arange(sl.nd):
+                LH[:, i]=xx[LH_i[:, i]]
+        else:
+            for i in np.arange(sl.nd):
+                xx=np.random.rand(sl.Nn)/sl.Nn+np.linspace(start=0, stop=1, num=sl.Nn, endpoint=False)
+                LH[:, i]=xx[LH_i[:, i]]
+        return LH
+    def sin_SSLHD(sl, Sd=np.nan, center=True):
+        if ~np.isnan(Sd):
+            np.random.seed(Sd)
+        XX=sl.LHD(center)
+        dm=np.inf
+        dis=np.ones((sl.nd, sl.nd, sl.Nn, sl.Nn))*np.inf
+        for l1 in np.arange(sl.nd):
+            for l2 in np.arange(l1+1, sl.nd):
+                for r1 in np.arange(sl.Nn):
+                    for r2 in np.arange(r1+1, sl.Nn):
+                        tem=np.abs(XX[r1, l1]-XX[r2, l1])+np.abs(XX[r1, l2]-XX[r2, l2])
+                        dis[l1, l2, r1, r2]=tem
+                        if tem<dm:
+                            dm=tem
+                            r1b=r1
+                            r2b=r2
+                            l1b=l1
+                            l2b=l2
+        hr=bool(1)
+        XX_tem=XX
+        dis_tem=dis
+        dm_tem=dm
+        dm_rec=[dm]
+        while hr:
+            wz=[
+                (r1b, l1b), (r1b, l2b), 
+                (r2b, l1b), (r2b, l2b)]
+            rr=list(range(r1b))+list(range(r1b+1, r2b))+list(range(r2b+1, sl.Nn))
+            brbr=bool(0)
+            for i, j in enumerate(wz):
+                ll=j[1]
+                if brbr:
+                    break
+                for u, v in enumerate(rr):
+                    XX_tem[j[0], ll], XX_tem[v, ll]=XX_tem[v, ll], XX_tem[j[0], ll]
+                    for r1 in np.arange(j[0]):
+                        for l1 in np.arange(ll):
+                            dis_tem[l1, ll, r1, j[0]]=np.abs(XX_tem[r1, l1]-XX_tem[j[0], l1])+np.abs(XX_tem[r1, ll]-XX_tem[j[0], ll])
+                        for l2 in np.arange(ll+1, sl.nd):
+                            dis_tem[ll, l2, r1, j[0]]=np.abs(XX_tem[r1, ll]-XX_tem[j[0], ll])+np.abs(XX_tem[r1, l2]-XX_tem[j[0], l2])
+                    for r2 in np.arange(j[0]+1, sl.Nn):
+                        for l1 in np.arange(ll):
+                            dis_tem[l1, ll, j[0], r2]=np.abs(XX_tem[j[0], l1]-XX_tem[r2, l1])+np.abs(XX_tem[j[0], ll]-XX_tem[r2, ll])
+                        for l2 in np.arange(ll+1, sl.nd):
+                            dis_tem[ll, l2, j[0], r2]=np.abs(XX_tem[j[0], ll]-XX_tem[r2, ll])+np.abs(XX_tem[j[0], l2]-XX_tem[r2, l2])
+                    dm_tem=np.inf
+                    for l1 in np.arange(sl.nd):
+                        for l2 in np.arange(l1+1, sl.nd):
+                            for r1 in np.arange(sl.Nn):
+                                for r2 in np.arange(r1+1, sl.Nn):
+                                    tem=dis_tem[l1, l2, r1, r2]
+                                    if tem<dm_tem:
+                                        dm_tem=tem
+                                        r1b_tem=r1
+                                        r2b_tem=r2
+                                        l1b_tem=l1
+                                        l2b_tem=l2
+                    if dm_tem>dm:
+                        dm=dm_tem
+                        XX=XX_tem
+                        r1b=r1b_tem
+                        r2b=r2b_tem
+                        l1b=l1b_tem
+                        l2b=l2b_tem
+                        dm_rec.append(dm)
+                        for r1 in np.arange(j[0]):
+                            for l1 in np.arange(ll):
+                                dis[l1, ll, r1, j[0]]=dis_tem[l1, ll, r1, j[0]]
+                            for l2 in np.arange(ll+1, sl.nd):
+                                dis[ll, l2, r1, j[0]]=dis_tem[ll, l2, r1, j[0]]
+                        for r2 in np.arange(j[0]+1, sl.Nn):
+                            for l1 in np.arange(ll):
+                                dis[l1, ll, j[0], r2]=dis_tem[l1, ll, j[0], r2]
+                            for l2 in np.arange(ll+1, sl.nd):
+                                dis[ll, l2, j[0], r2]=dis_tem[ll, l2, j[0], r2]
+                        brbr=True
+                        break
+                    else:
+                        XX_tem[j[0], ll], XX_tem[v, ll]=XX_tem[v, ll], XX_tem[j[0], ll]
+                        for r1 in np.arange(j[0]):
+                            for l1 in np.arange(ll):
+                                dis_tem[l1, ll, r1, j[0]]=dis[l1, ll, r1, j[0]]
+                            for l2 in np.arange(ll+1, sl.nd):
+                                dis_tem[ll, l2, r1, j[0]]=dis[ll, l2, r1, j[0]]
+                        for r2 in np.arange(j[0]+1, sl.Nn):
+                            for l1 in np.arange(ll):
+                                dis_tem[l1, ll, j[0], r2]=dis[l1, ll, j[0], r2]
+                            for l2 in np.arange(ll+1, sl.nd):
+                                dis_tem[ll, l2, j[0], r2]=dis[ll, l2, j[0], r2]
+            if ~brbr and i==3:
+                hr=False
+        return XX, dm, np.array(dm_rec), dis
+    def mul_SSLHD(sl, TT, Sd=np.nan, center=True):
+        if ~np.isnan(Sd):
+            np.random.seed(Sd)
+        XT=np.empty((TT, sl.Nn, sl.nd))
+        dm_long=[]
+        dm=-np.inf
+        for i in np.arange(TT):
+            XT[i, :, :], dm_tem, tem, _=sl.sin_SSLHD(center=center)
+            dm_long.append(tem)
+            if dm_tem>dm:
+                dm=dm_tem
+                ind=i
+        return XT[ind, :, :], dm, dm_long
+def Eudis(XX):
+    Nn, nd=XX.shape
+    dis=np.ones((Nn, Nn))*np.inf
+    dm=np.inf
+    for i in np.arange(Nn):
+        for j in np.arange(i+1, Nn):
+            tem=np.sum((XX[i, :]-XX[j, :])**2)**0.5
+            dis[i, j]=tem
+            if tem<dm:
+                dm=tem
+    return dis, dm
