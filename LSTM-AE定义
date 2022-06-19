@@ -1,0 +1,286 @@
+import torch
+import torch.nn as nn
+import numpy as np
+import time
+import matplotlib.pyplot as plt
+import random
+import pandas as pd
+
+class Encoder(nn.Module):
+    def __init__(self,seq_len,input_size,hidden_size,num_layers,dropout):
+        super().__init__()
+        self.ls=nn.LSTM(
+                input_size,input_size,
+                num_layers,
+                dropout=dropout,
+                device='cuda:0')
+        self.li=nn.Linear(seq_len,hidden_size,device='cuda:0')
+    def forward(self,xx):
+        xx,*_=self.ls(xx)
+        xx=xx.permute(2,1,0)
+        xx=self.li(xx).permute(2,1,0)
+        return xx
+class Decoder(nn.Module):
+    def __init__(self,ti,input_size,hidden_size,output_size,num_layers,dropout):
+        super().__init__()
+        self.ls1=nn.LSTM(
+                input_size,hidden_size,
+                num_layers,dropout=dropout,
+                device='cuda:0')
+        self.ls2=nn.LSTM(
+                hidden_size,output_size,
+                num_layers,dropout=dropout,
+                device='cuda:0')
+        self.ti=ti
+    def forward(self,xx):
+        xx=dvy(xx,self.ti)
+        xx,*_=self.ls1(xx)
+        xx,*_=self.ls2(xx)
+        return xx
+class AEF(nn.Module):
+    def __init__(self,bs,bi,bh,bn,bd,jt,ji,jh,jn,jd,jo):
+        super().__init__()
+        self.ED=Encoder(bs,bi,bh,bn,bd)
+        self.DC=Decoder(jt,ji,jh,jo,jn,jd)
+    def forward(self,xx):
+        xx=self.ED(xx)
+        xx=self.DC(xx)
+        return xx
+def dab(xx,sbatch):
+    xx=xx.unsqueeze(dim=2)
+    xl,ns,_=xx.shape
+    nbatch=int(np.floor(ns/sbatch))
+    xx3=torch.empty((nbatch,xl,sbatch,1),device='cuda:0')
+    for i in range(nbatch):
+        xx3[i,:,:,:]=xx[:,(i*sbatch):((i+1)*sbatch),:]
+    return xx3
+def ji_tra(xx,vv,te,sbatch,lr,ep,ZB):
+    xx2=xx.unsqueeze(dim=2)
+    xx=dab(xx,sbatch)
+    vv=vv.unsqueeze(dim=2)
+    te=te.unsqueeze(dim=2)
+    GG=torch.optim.SGD(ZB.parameters(),lr=lr)
+    LO=nn.L1Loss()
+    zi={}
+    zv=torch.inf
+    nb=xx.shape[0]
+    los1=np.empty(ep*nb)
+    los2=np.empty(ep*nb)
+    los3=np.empty(ep*nb)
+    for i in range(ep):
+        for j in range(nb):
+            db=xx[j,:,:,:]
+            xx3=ZB(db)
+            sp1=LO(db,xx3)
+            ZB.zero_grad()
+            sp1.backward()
+            GG.step()
+            ZB.eval()
+            xx4=ZB(xx2)
+            vv2=ZB(vv)
+            te2=ZB(te)
+            sp0=LO(xx2,xx4)
+            sp2=LO(vv,vv2)
+            sp3=LO(te,te2)
+            los1[i*nb+j]=dea(sp0)
+            los2[i*nb+j]=dea(sp2)
+            los3[i*nb+j]=dea(sp3)
+            ZB.train()
+            if sp2<zv:
+                zi=ZB.state_dict()
+                zv=sp2
+    ZB.load_state_dict(zi)
+    return ZB,zv,los1,los2,los3
+def tra(xx,vv,te,sbatch,lr,ep,bs,bi,bh,bn,bd,ji,jh,jn,jd,jo):
+    xx2=xx.unsqueeze(dim=2)
+    xx=dab(xx,sbatch)
+    vv=vv.unsqueeze(dim=2)
+    te=te.unsqueeze(dim=2)
+    jt=xx2.shape[0]
+    ZB=AEF(bs,bi,bh,bn,bd,jt,ji,jh,jn,jd,jo)
+    GG=torch.optim.SGD(ZB.parameters(),lr=lr)
+    LO=nn.L1Loss()
+    zi={}
+    zv=torch.inf
+    nb=xx.shape[0]
+    los1=np.empty(ep*nb)
+    los2=np.empty(ep*nb)
+    los3=np.empty(ep*nb)
+    for i in range(ep):
+        for j in range(nb):
+            db=xx[j,:,:,:]
+            xx3=ZB(db)
+            sp1=LO(db,xx3)
+            ZB.zero_grad()
+            sp1.backward()
+            GG.step()
+            ZB.eval()
+            xx4=ZB(xx2)
+            vv2=ZB(vv)
+            te2=ZB(te)
+            sp0=LO(xx2,xx4)
+            sp2=LO(vv,vv2)
+            sp3=LO(te,te2)
+            los1[i*nb+j]=dea(sp0)
+            los2[i*nb+j]=dea(sp2)
+            los3[i*nb+j]=dea(sp3)
+            ZB.train()
+            if sp2<zv:
+                zi=ZB.state_dict()
+                zv=sp2
+    ZB.load_state_dict(zi)
+    return ZB,zv,los1,los2,los3
+def pure_tra(xx,vv,sbatch,lr,ep,bs,bi,bh,bn,bd,ji,jh,jn,jd,jo):
+    jt=xx.shape[0]
+    xx=dab(xx,sbatch)
+    ZB=AEF(bs,bi,bh,bn,bd,jt,ji,jh,jn,jd,jo)
+    GG=torch.optim.SGD(ZB.parameters(),lr=lr)
+    LO=nn.L1Loss()
+    zi={}
+    zv=torch.inf
+    nb=xx.shape[0]
+    los2=np.empty(ep*nb)
+    for i in range(ep):
+        for j in range(nb):
+            db=xx[j,:,:,:]
+            xx3=ZB(db)
+            sp1=LO(db,xx3)
+            ZB.zero_grad()
+            sp1.backward()
+            GG.step()
+            ZB.eval()
+            vv2=ZB(vv)
+            sp2=LO(vv,vv2)
+            los2[i*nb+j]=dea(sp2)
+            ZB.train()
+            if sp2<zv:
+                zi=ZB.state_dict()
+                zv=sp2
+    ZB.load_state_dict(zi)
+    return ZB,zv,los2
+def tor(xx,ff=torch.float):
+    return torch.tensor(xx,device='cuda:0',dtype=ff)
+def dea(xx):
+    if type(xx)!=np.ndarray:
+        return xx.detach().cpu().numpy()
+    else:
+        return xx
+def pic(aa,bb=np.nan,le=np.nan,ri=np.nan):
+    lx=len(aa)
+    fig,ax=plt.subplots(dpi=300)
+    if type(bb)!=list:
+        lb=np.arange(lx)
+    else:
+        lb=bb
+    for dd,ii in enumerate(aa):
+        if type(ii)==torch.Tensor:
+            ii=dea(ii)
+        ll=ii.size
+        xx=np.arange(ll)+1
+        if np.isnan(le):
+            ax.plot(xx,ii,label=lb[dd])
+        else:
+            ax.plot(xx[le:ri],ii[le:ri],label=lb[dd])
+    ax.legend()
+def pic2(aa,bb=10,le=-np.inf,ri=np.inf):
+    if type(aa)==torch.Tensor:
+        aa=dea(aa)
+    fig,ax=plt.subplots(dpi=300)
+    aa=aa[np.minimum(aa<=ri,aa>=le)]
+    ax.hist(aa,bins=bb)
+def dvy(aa,ml):
+    la=aa.shape[0]
+    bu=(la-1)/ml
+    ind=0
+    cc=torch.empty((ml,aa.shape[1],aa.shape[2]),device='cuda:0')
+    for i in range(ml):
+        ind1=int(np.floor(ind))
+        ind2=int(ind1+1)
+        cc[i,:,:]=aa[ind1,:,:]+(ind-np.floor(ind))*(aa[ind2,:,:]-aa[ind1,:,:])
+        ind+=bu
+    return cc
+def AU(yi,vf,nf):
+    ny=len(yi)
+    ff=np.array(np.floor(ny*np.linspace(start=0,stop=1,num=nf+1,endpoint=True)),dtype=np.int32)
+    pl=np.argsort(-yi)
+    vf2=np.zeros(ny,dtype=bool)
+    TPR=np.empty(nf)
+    FPR=np.empty(nf)
+    TP=0
+    FP=0
+    TN=np.sum(vf==False)
+    FN=ny-TN
+    for i in range(nf):
+        vft=vf[pl[ff[i]:ff[i+1]]]
+        nl=len(vft)
+        origin_FN=np.sum(vft)
+        origin_TN=nl-origin_FN
+        new_TP=np.sum(vft)
+        new_FP=nl-new_TP
+        TP+=new_TP
+        FP+=new_FP
+        TN-=origin_TN
+        FN-=origin_FN
+        TPR[i]=TP/(TP+FN)
+        FPR[i]=FP/(FP+TN)
+    AUC=0
+    for i in range(nf-1):
+        AUC+=TPR[i]*(FPR[i+1]-FPR[i])
+    return AUC,TPR,FPR
+def setsd(sd):
+    random.seed(sd)
+    torch.cuda.manual_seed_all(sd)
+    np.random.seed(sd)
+def mul_tra(cj,xx,vv,YI,GG,iii,di,nf):
+    nz=len(cj)
+    AUC=np.empty(nz)
+    zidm=[]
+    for i in range(nz):
+        cjt=cj[i]
+        sd=int(cjt[0])
+        tra_cj=cjt[1:]
+        bb=[0,2,3,4,5,6,8,9,10,12]
+        for j in bb:
+            tra_cj[j]=int(tra_cj[j])
+        setsd(sd)
+        ZB,_,los2=pure_tra(xx,vv,*tra_cj)
+        zidm.append(ZB.state_dict())
+        xx2=ZB(xx.unsqueeze(dim=2))
+        vfli=dea(xx2[:,iii,0])
+        vf=dea(GG(xx2,xx.unsqueeze(dim=2)).mean(axis=0))[:,0]
+        xx2=ZB(YI)
+        yi=dea(GG(xx2,YI).mean(axis=0))[:,0]
+        del xx2
+        torch.cuda.empty_cache()
+        nyi=yi.size
+        nvg=vf.size
+        vff=np.array(np.concatenate((np.ones(nyi),np.zeros(nvg))),dtype=bool)
+        AUC[i],TPR,FPR=AU(np.concatenate((yi,vf),axis=0),vff,nf)
+        fig,ax=plt.subplots(dpi=300)
+        ax.plot(FPR,TPR)
+        fig.savefig(di+'{}号模型的ROC图.png'.format(i))
+        ax.cla()
+        xtem=np.arange(1,141)
+        ax.plot(xtem,vfli)
+        ax.plot(xtem,dea(xx[:,iii]))
+        fig.savefig(di+'{}号模型的拟合样例图.png'.format(i))
+        ax.cla()
+        nlos=len(los2)
+        ax.plot(np.arange(nlos),los2)
+        fig.savefig(di+'{}号模型的损失函数图.png'.format(i))
+        ax.cla()
+        plt.close(fig)
+        fig,ax=plt.subplots(dpi=300,figsize=(13,4))
+        ax.hist(vf,alpha=0.6,bins=150)
+        ax.hist(yi,alpha=0.6,bins=150)
+        fig.savefig(di+'{}号模型的误差直方图.png'.format(i))
+        plt.close(fig)
+    PP=np.concatenate(
+            (
+            np.expand_dims(np.arange(nz),axis=1),
+            np.expand_dims(AUC,axis=1)
+            ),
+            axis=1
+        )
+    PP=PP[np.argsort(-PP[:,1]),:]
+    return PP,zidm
